@@ -6,6 +6,7 @@ def CalculateSum(a,b): # Wrong naming convention (Pylint Convention)
     """
     res = a + b
     print(result) # ERROR: 'result' is not defined (Pylint Error)
-    return res
+    z=z/0 # division sur 0 
+    return res,z
 
 # Missing final newline (Pylint Convention)
