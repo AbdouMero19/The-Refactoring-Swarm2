@@ -45,4 +45,5 @@ def write_file(filename: str, target_dir: str, content: str) -> int:
 
     #ouvrir un fichier, ecrire sur le fichier, fermer lorsqu'on termine 
     with open(full_path, "w", encoding = "utf-8") as f:
-        return f.write(content)  
+        return f.write(content) 
+
