@@ -1,101 +1,145 @@
+import subprocess
 import os
-from langchain_core.messages import SystemMessage, HumanMessage
+import re
+from typing import Literal
+from langchain_core.messages import HumanMessage, SystemMessage
+from langgraph.types import Command
+from langgraph.graph import END
 from src.state.AgentState import AgentState
 from src.models.gemini_models import get_llm
-from src.utils.tools import write_file, run_pytest  
-from src.prompts.judge_prompts import get_judge_system_prompt , get_judge_user_prompt
+from src.utils.file_tool import write_file
+from src.utils.pylint_tool import run_pylint
 
-def judge_node(state: AgentState):
+def judge_node(state: AgentState) -> Command[Literal["AUDITOR", END]]:
     """
-    The Judge Agent responsible for Quality Assurance.
-    
-    Strategy:
-    1. Check if a test file (test_xxx.py) already exists.
-    2. IF EXISTS: Reuse it (Save tokens/money).
-    3. IF MISSING: Use the 'Pro' model to write a comprehensive test suite.
-    4. Run the tests using Pytest.
-    5. Update state with the test results.
+    1. GENERATE TESTS: Writes a specific test file for the code.
+    2. RUN TESTS: Executes pytest.
+    3. ANALYZE (If Fail): Uses LLM to summarize exactly what went wrong.
+    4. DECIDE: Pass -> End | Fail -> AUDITOR.
     """
-    print("\n--- ⚖️ JUDGE IS EVALUATING ---")
-
-    # 1. Setup Data
     filename = state["filename"]
     code_content = state["code_content"]
+    iteration = state.get("iteration_count", 0)
     
-    # Define the standard naming convention: sandbox/main.py -> sandbox/test_main.py
-    # We split the path to handle folders correctly
-    dir_name = os.path.dirname(filename)
+    # Setup paths
     base_name = os.path.basename(filename)
-    test_filename = os.path.join(dir_name, f"/tests/test_{base_name}")
+    dir_name = os.path.dirname(filename)
+    test_filename = os.path.join(dir_name, f"test_{base_name}")
 
-    # 2. DECISION: Generate or Reuse?
-    if os.path.exists(test_filename):
-        print(f"✅ Existing tests found: {test_filename}. Reusing them.")
-        # We don't need to invoke the LLM here. We just proceed to execution.
-        generation_message = "Reused existing tests to verify logic."
+    print(f"⚖️ Judge: Evaluating {base_name}...")
+
+    # --- PHASE 1: GENERATE TESTS ---
+    llm = get_llm(model_type="pro")
     
-    else:
-        print(f"🆕 No tests found. Generating new test suite for: {filename}")
-        
-        # Initialize the "Smart" Model (Pro)
-        llm = get_llm(model_type="pro").bind_tools([write_file])
-
-        # Strict instructions for the Judge
-        system_prompt = get_judge_system_prompt(test_filename, base_name)
-        
-        # SystemMessage(content=f"""
-        # You are a QA Lead. Your job is to create a ROBUST test suite.
-        
-        # INSTRUCTIONS:
-        # 1. Write a SINGLE test file named '{test_filename}'.
-        # 2. Import the functions from the source file '{base_name}'.
-        # 3. Create test functions (def test_...) for EVERY public function in the source code.
-        # 4. Include 'happy paths' (valid inputs) and 'edge cases' (zeros, none, empty lists).
-        # 5. DO NOT focus on style (pylint); focus purely on LOGIC correctness.
-        # """)
-
-        user_prompt = get_judge_user_prompt(code_content)
-        
-        # HumanMessage(content=f"""
-        # Here is the code to test:
-        # ```python
-        # {code_content}
-        # ```
-        
-        # Generate the test file now.
-        # """)
-
-        full_prompt = [system_prompt] + state["messages"] + [user_prompt]
-
-        # Invoke the LLM
-        response = llm.invoke(full_prompt)
-        
-        # EXECUTE THE TOOL (Critical Step)
-        # The LLM returns a "tool_call" request. We must manually run it to save the file to disk.
-        if response.tool_calls:
-            for tool_call in response.tool_calls:
-                if tool_call["name"] == "write_file":
-                    # Extract arguments provided by the LLM
-                    args = tool_call["args"]
-                    # Actually write the file
-                    write_file(args["filepath"], args["content"])
-                    print(f"📝 Judge generated and saved: {args['filepath']}")
-                    generation_message = "Generated new test suite."
-        else:
-            # Fallback if LLM refused to call the tool (rare with Pro)
-            print("⚠️ Warning: Judge did not trigger write_file tool.")
-            generation_message = "Judge failed to generate tests."
-
-    # 3. EXECUTE PYTEST
-    # Now that we are sure the file exists (old or new), we run it.
-    print(f"🚀 Running Pytest on {test_filename}...")
-    test_output = run_pytest(test_filename)
+    # We ask the LLM to write tests that are compatible with the file structure
+    gen_prompt = f"""
+    You are a QA Engineer. Write a Pytest test file for this code:
     
-    # 4. Analyze Results
-    # If the output contains "failed" or "error", we have work to do.
-    # We update the state so the Fixer knows what to fix.
+    FILE: {base_name}
+    ```python
+    {code_content}
+    ```
     
-    return {
-        "test_errors": test_output,
-        "messages": [HumanMessage(content=f"Test Execution Result: {test_output}")]
-    }
+    INSTRUCTIONS:
+    1. Import the module using: `from {base_name.replace('.py', '')} import *`
+    2. Write comprehensive unit tests.
+    3. Output ONLY valid Python code in a markdown block.
+    4. assume ONLY standard English vowels (a, e, i, o, u). Do NOT test accented characters.
+    """
+    
+    response = llm.invoke([HumanMessage(content=gen_prompt)])
+    
+    # Extract code
+    code_match = re.search(r"```python(.*?)```", response.content, re.DOTALL)
+    test_code = code_match.group(1).strip() if code_match else response.content
+    
+    # Save test file
+    with open(test_filename, "w" , encoding="utf-8") as f:
+        f.write(test_code)
+
+    # --- PHASE 2: RUN TESTS ---
+    print(f"   -> Running generated tests...")
+
+    # 1. Prepare the Environment
+    # This is the magic trick. We add the sandbox root to Python's search path.
+    env = os.environ.copy()
+    project_root = state["project_root"]
+    env["PYTHONPATH"] = f"{project_root}:{env.get('PYTHONPATH', '')}"
+
+    try:
+        # Run pytest and capture everything
+        result = subprocess.run(
+            ["pytest", test_filename],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            env=env
+        )
+        passed = (result.returncode == 0)
+        raw_output = result.stdout + result.stderr
+        
+    except Exception as e:
+        passed = False
+        raw_output = f"CRITICAL SYSTEM ERROR: {str(e)}"
+
+    # --- PHASE 3: DECISION & FORMALIZATION ---
+    
+    # A. SUCCESS CASE
+    if passed:
+        print("✅ Judge: Tests Passed.")
+        # Optional: Clean up test file
+        # os.remove(test_filename)
+        result = run_pylint(state["filename"])  # Re-run pylint to update score after fixes
+        return Command(
+            update={
+                "pylint_score": result["score"],
+                "test_errors": "Passed",
+                "messages": [HumanMessage(content="Judge: Code verified successfully.")]
+            },
+            goto=END
+        )
+
+    # B. MAX RETRIES CASE
+    if iteration >= 3:
+        print("🛑 Judge: Max retries reached.")
+        result = run_pylint(state["filename"])  # Re-run pylint to update score after fixes
+        return Command(
+            update={
+                "pylint_score": result["score"],
+                "messages": [HumanMessage(content="Judge: Giving up after 3 failures.")]
+                },
+            goto=END
+        )
+
+    # C. FAILURE CASE -> FORMALIZE THE ERROR
+    print("❌ Judge: Tests Failed. Formalizing feedback...")
+    
+    # We use the LLM to translate "Computer Speak" (Traceback) to "Dev Speak" (Actionable Items)
+    analysis_prompt = f"""
+    You are a Senior Debugger.
+    
+    The unit tests failed for '{base_name}'.
+    
+    --- RAW PYTEST OUTPUT ---
+    {raw_output}
+    -------------------------
+    
+    TASK:
+    1. Analyze the traceback.
+    2. Summarize the EXACT logic errors in plain English.
+    3. Ignore environment warnings. Focus on AssertionErrors and logic bugs.
+    4. Provide a clear bullet list of what needs to be fixed.
+    """
+    
+    analysis = llm.invoke([HumanMessage(content=analysis_prompt)])
+    formalized_error = analysis.content
+    
+    return Command(
+        update={
+            # We overwrite the old errors with this new, clean analysis
+            "test_errors": formalized_error,
+            "iteration_count": iteration + 1,
+            "messages": [HumanMessage(content=f"Judge: Tests failed. Feedback: {formalized_error}")]
+        },
+        goto="AUDITOR"
+    )

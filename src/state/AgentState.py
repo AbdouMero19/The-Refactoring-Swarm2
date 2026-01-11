@@ -14,11 +14,13 @@ class AgentState(TypedDict):
     messages: Annotated[List[AnyMessage], add_messages]
 
     # --- FILE CONTEXT ---
+    project_root: str
     filename: str       # e.g., "sandbox/bad_code.py"
     code_content: str   # The actual text of the code (synced with disk)
 
     # --- METRICS & FEEDBACK ---
     pylint_score: float # e.g., 8.5
+    style_issues: str   # Output from Pylint. Empty if score is high.
     test_errors: str    # Output from Pytest. Empty if all tests pass.
 
     # --- SAFETY ---
