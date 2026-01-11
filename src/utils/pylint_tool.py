@@ -4,51 +4,45 @@ import subprocess # pour executer des commandes externes (pylint)
 import re         # necessaire pour obtinir un score numérique exact 
 import os         # pour securiser path des fichiers
 from typing import Dict # le format de sortie
-import glob
+
 # dict: contient le score, code retour, stdout, stderr, issues_count
-def run_pylint(target_dir: str) -> Dict:
-    #verifie si le dossier existe
-    if not os.path.isdir(target_dir):
+def run_pylint(file_path: str) -> Dict:
+    """
+    Runs pylint on a single Python file and returns analysis results.
+    
+    Args:
+        file_path: Path to the Python file to analyze
+        
+    Returns:
+        Dict with keys: score, returncode, stdout, stderr, issues_count
+    """
+    # Verifie si le fichier existe
+    if not os.path.isfile(file_path):
         return {
             "score": 0.0,
             "returncode": -1,
             "stdout": "",
-            "stderr": f"Erreur : le dossier '{target_dir}' n'existe pas !",
+            "stderr": f"Erreur : le fichier '{file_path}' n'existe pas !",
             "issues_count": 0
         }
 
-
-    # 🔥 Récupère uniquement les fichiers .py
-    py_files = glob.glob(os.path.join(target_dir, "*.py"))
-    
-    if not py_files:
+    # Verifie que c'est bien un fichier Python
+    if not file_path.endswith('.py'):
         return {
-            "score": 10.0,  # Pas de fichier = code parfait (ou vide)
-            "returncode": 0,
-            "stdout": "No Python files found.",
-            "stderr": "",
+            "score": 0.0,
+            "returncode": -1,
+            "stdout": "",
+            "stderr": f"Erreur : '{file_path}' n'est pas un fichier Python !",
             "issues_count": 0
         }
     
     try:
-
-        #result = subprocess.run(
-        #   [sys.executable, "-m", "pylint", target_dir],
-         #   capture_output = True,
-          #  text = True,
-          #  timeout = 30 #eviter les boucles infinies
-        #)
-
-        # Dans la fonction run_pylint :
-        py_files = glob.glob(os.path.join(target_dir, "*.py"))
-        if not py_files:
-            return {"score": 10.0, "issues_count": 0, "returncode": 0, "stdout": "No Python files.", "stderr": ""}
-
+        # Execute pylint sur le fichier specifique
         result = subprocess.run(
-            [sys.executable, "-m", "pylint"] + py_files,
+            [sys.executable, "-m", "pylint", file_path],
             capture_output=True,
             text=True,
-            timeout=30
+            timeout=30  # eviter les boucles infinies
         )
 
         stdout = result.stdout
@@ -75,7 +69,7 @@ def run_pylint(target_dir: str) -> Dict:
 
     # extraire le score
     score = 0.0
-    score_match = re.search(r"rated at ([0-9]+\.[0-9]+)", stdout)
+    score_match = re.search(r"rated at (-?[0-9]+\.[0-9]+)", stdout)
     if score_match:
         try:
             score = float(score_match.group(1)) # convertir une chaine de caracteres en un nombre 
