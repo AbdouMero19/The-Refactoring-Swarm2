@@ -7,21 +7,7 @@ from typing import Dict
 
 
 def run_pytest(target_dir: str, project_root: str = None) -> Dict:
-    """
-    Exécute pytest sur un fichier ou dossier donné.
     
-    Args:
-        target_dir (str): Chemin du fichier .py ou du dossier à tester.
-        project_root (str, optional): Racine du projet pour PYTHONPATH.
-    
-    Returns:
-        Dict contenant:
-        - 'returncode': int (0 = succès)
-        - 'stdout': str
-        - 'stderr': str
-        - 'test_passed': bool
-        - 'error_summary': str (résumé lisible des erreurs)
-    """
     # 1. Vérification du chemin
     if not os.path.exists(target_dir):
         return {
