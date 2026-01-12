@@ -4,7 +4,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.types import Command  # <--- The modern way to route
 from src.state import AgentState
 from src.models.gemini_models import get_llm
-from src.utils.pylint_tool import run_pylint 
+from src.utils.pylint_tool import run_pylint
+from src.utils.agent_logger import log_auditor_action 
 
 def auditor_node(state: AgentState) -> Command[Literal["FIXER", "JUDGE"]]:
     """
@@ -26,6 +27,15 @@ def auditor_node(state: AgentState) -> Command[Literal["FIXER", "JUDGE"]]:
     # --- SCENARIO A: CODE IS CLEAN ---
     if (score >= THRESHOLD and state["test_errors"] == ""):
         print(f"✅ Code is clean (Score: {score}) and logic is clean. Skipping FIXER -> Going to JUDGE.")
+        
+        # Log the clean code analysis
+        log_auditor_action(
+            filename=filename,
+            pylint_score=score,
+            input_prompt=f"Pylint check on {Path(filename).name}",
+            output_response=f"Code is clean with score {score}/10. No issues found.",
+            status="SUCCESS"
+        )
         
         # We construct a Command that updates state AND jumps to the next node
         return Command(
@@ -57,6 +67,15 @@ def auditor_node(state: AgentState) -> Command[Literal["FIXER", "JUDGE"]]:
         SystemMessage(content="You are a Senior Code Auditor."),
         HumanMessage(content=prompt)
     ])
+    
+    # Log the analysis with issues found
+    log_auditor_action(
+        filename=filename,
+        pylint_score=score,
+        input_prompt=prompt,
+        output_response=response.content,
+        status="SUCCESS"
+    )
 
     return Command(
         # Update the state with the FIXER's instructions

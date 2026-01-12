@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage
 
 # Import your custom modules
-from src.utils.logger import log_experiment
+from src.utils.agent_logger import log_system_startup, log_system_completion
 from src.state.AgentState import AgentState
 from src.graph.graph import build_agent_graph
 
@@ -54,7 +54,7 @@ def main():
         sys.exit(1)
 
     print(f"🚀 DEMARRAGE SUR : {args.target_dir}")
-    # log_experiment("System", "STARTUP", f"Target: {args.target_dir}", "INFO")
+    log_system_startup(args.target_dir)
 
     # 3. Build & Compile Graph
     # We build the graph once and reuse it for all files
@@ -81,6 +81,9 @@ def main():
     print(f"📂 Found {len(files)} python files to process.")
 
     # 6. Execution Loop
+    successful = 0
+    failed = 0
+    
     for file_path in files:
         relative_name = os.path.relpath(file_path, sandboxed_dir)
         print(f"\n{'='*60}")
@@ -113,15 +116,22 @@ def main():
             final_score = final_state.get("pylint_score", 0)
             print(f"✅ Finished {relative_name}")
             print(f"   - Final Pylint Score: {final_score}/10")
-            
-            # log_experiment("System", "SUCCESS", f"Refactored {relative_name} (Score: {final_score})", "INFO")
+            successful += 1
 
         except Exception as e:
             print(f"❌ Failed on {relative_name}: {e}")
-            # log_experiment("System", "ERROR", f"Failed on {relative_name}: {str(e)}", "ERROR")
+            failed += 1
+    
+    # Log completion summary
+    log_system_completion(
+        files_processed=len(files),
+        successful=successful,
+        failed=failed
+    )
 
     print("\n✅ MISSION_COMPLETE")
     print(f"Output available in: {sandboxed_dir}")
+    print(f"📝 Logs saved to: logs/experiment_data.json")
 
 if __name__ == "__main__":
     main()

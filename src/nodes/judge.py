@@ -9,6 +9,7 @@ from src.state.AgentState import AgentState
 from src.models.gemini_models import get_llm
 from src.utils.file_tool import write_file
 from src.utils.pylint_tool import run_pylint
+from src.utils.agent_logger import log_judge_action
 
 def judge_node(state: AgentState) -> Command[Literal["AUDITOR", END]]:
     """
@@ -90,6 +91,17 @@ def judge_node(state: AgentState) -> Command[Literal["AUDITOR", END]]:
         # Optional: Clean up test file
         # os.remove(test_filename)
         result = run_pylint(state["filename"])  # Re-run pylint to update score after fixes
+        
+        # Log successful test execution
+        log_judge_action(
+            filename=filename,
+            test_filename=test_filename,
+            test_output=raw_output[:500] + "..." if len(raw_output) > 500 else raw_output,
+            generation_message="Tests passed",
+            model_used="gemini-1.5-pro",
+            status="SUCCESS"
+        )
+        
         return Command(
             update={
                 "pylint_score": result["score"],
@@ -103,6 +115,17 @@ def judge_node(state: AgentState) -> Command[Literal["AUDITOR", END]]:
     if iteration >= 3:
         print("🛑 Judge: Max retries reached.")
         result = run_pylint(state["filename"])  # Re-run pylint to update score after fixes
+        
+        # Log max retries failure
+        log_judge_action(
+            filename=filename,
+            test_filename=test_filename,
+            test_output=f"Max retries reached. Last output: {raw_output[:300]}",
+            generation_message="Giving up after 3 iterations",
+            model_used="N/A",
+            status="FAILURE"
+        )
+        
         return Command(
             update={
                 "pylint_score": result["score"],
@@ -133,6 +156,16 @@ def judge_node(state: AgentState) -> Command[Literal["AUDITOR", END]]:
     
     analysis = llm.invoke([HumanMessage(content=analysis_prompt)])
     formalized_error = analysis.content
+    
+    # Log test failure with analysis
+    log_judge_action(
+        filename=filename,
+        test_filename=test_filename,
+        test_output=formalized_error,
+        generation_message=f"Tests failed (iteration {iteration + 1})",
+        model_used="gemini-1.5-pro",
+        status="FAILURE"
+    )
     
     return Command(
         update={

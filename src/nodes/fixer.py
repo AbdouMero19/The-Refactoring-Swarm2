@@ -6,6 +6,7 @@ from langgraph.types import Command
 from src.state.AgentState import AgentState
 from src.models.gemini_models import get_llm
 from src.utils.file_tool import write_file
+from src.utils.agent_logger import log_fixer_action
 
 def fixer_node(state: AgentState) -> Command[Literal["JUDGE"]]:
     """
@@ -74,6 +75,15 @@ def fixer_node(state: AgentState) -> Command[Literal["JUDGE"]]:
     # with open(filename, "w") as f:
     #     f.write(new_code)
     # print(f"💾 Fixer saved changes to {filename}.")
+    
+    # Log the fix action
+    log_fixer_action(
+        filename=filename,
+        input_prompt=prompt[:500] + "..." if len(prompt) > 500 else prompt,  # Truncate for readability
+        output_response=f"Applied fixes to {Path(filename).name}",
+        changes_applied=True,
+        status="SUCCESS"
+    )
 
     # --- 6. RETURN COMMAND ---
     return Command(
