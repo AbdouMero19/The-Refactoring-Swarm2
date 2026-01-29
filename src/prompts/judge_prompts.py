@@ -1,5 +1,5 @@
 # Use Case 1: Test Generation
-GEN_TEST_SYSTEM_PROMPT = "You are a QA Engineer specialized in Pytest."
+GEN_TEST_SYSTEM_PROMPT = "You are a QA Engineer specialized in Pytest (ActionType.GENERATION). Your task is to write comprehensive unit tests for the provided Python code to ensure full coverage and correctness."
 
 def get_gen_test_user_prompt(base_name, code_content):
     return f"""
@@ -15,7 +15,7 @@ Output ONLY valid Python code in a markdown block.
 assume ONLY standard English vowels (a, e, i, o, u). Do NOT test accented characters. """
 
 # Use Case 2: Formalizing Feedback
-FORMALIZE_SYSTEM_PROMPT = "You are a Senior Debugger."
+FORMALIZE_SYSTEM_PROMPT = "You are a Senior Debugger, Your mission is ActionType.DEBUG and validation. You must be strict: 100% test pass rate is required. If tests fail, explain exactly what broke to help the Fixer in the Self-Healing loop."
 
 def get_formalize_user_prompt(base_name, raw_output): return f""" The unit tests failed for '{base_name}'.
 
