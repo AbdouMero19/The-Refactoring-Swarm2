@@ -1,10 +1,11 @@
 from pathlib import Path
 from typing import Literal
 from langchain_core.messages import HumanMessage, SystemMessage 
-from langgraph.types import Command  # <--- The modern way to route
-from src.state import AgentState
+from langgraph.types import Command 
+from src.state.AgentState import AgentState
 from src.models.gemini_models import get_llm
 from src.utils.pylint_tool import run_pylint 
+from src.prompts.auditor_prompts import AUDITOR_SYSTEM_PROMPT, get_auditor_user_prompt
 
 def auditor_node(state: AgentState) -> Command[Literal["FIXER", "JUDGE"]]:
     """
@@ -15,56 +16,37 @@ def auditor_node(state: AgentState) -> Command[Literal["FIXER", "JUDGE"]]:
     filename = state["filename"]
     print(f"🔍 Auditor scanning {filename} with Pylint...")
 
-    # --- 1. STATIC CHECK (Fast & Free) ---
     pylint_result = run_pylint(filename)
     score = pylint_result["score"]
     raw_output = pylint_result["stdout"]
     
-    # Define our standard of excellence
     THRESHOLD = 9.5
-
     # --- SCENARIO A: CODE IS CLEAN ---
     if (score >= THRESHOLD and state["test_errors"] == ""):
-        print(f"✅ Code is clean (Score: {score}) and logic is clean. Skipping FIXER -> Going to JUDGE.")
-        
-        # We construct a Command that updates state AND jumps to the next node
+        print(f"✅ Code is clean (Score: {score}). Skipping FIXER.")
         return Command(
-            # Update the state (Whiteboard)
             update={
                 "pylint_score": score,
-                "pylint_msg": "Style is excellent.",
                 "messages": [HumanMessage(content=f"Auditor: Code is clean ({score}/10).")]
             },
-            # Control Flow: Skip the FIXER entirely!
             goto="JUDGE"
         )
-
-    # --- SCENARIO B: CODE IS DIRTY ---
-    print(f"⚠️ Score is {score}. Invoking LLM and sending to FIXER...")
-
+    
+# --- SCENARIO B: CODE IS DIRTY ---
+    print(f"⚠️ Score is {score}. Invoking LLM")
     llm = get_llm(model_type="flash")
     
-    # Prompt the LLM to translate raw Pylint noise into clear instructions
-    prompt = f"""
-    The Pylint score for '{Path(filename).name}' is {score}/10. 
-    Here is the raw output:
-    {raw_output}
-    
-    Analyze this. Output a concise list of instructions for a developer to fix these style issues.
-    """
-    
     response = llm.invoke([
-        SystemMessage(content="You are a Senior Code Auditor."),
-        HumanMessage(content=prompt)
+        SystemMessage(content=AUDITOR_SYSTEM_PROMPT),
+        HumanMessage(content=get_auditor_user_prompt(Path(filename).name, score, raw_output))
     ])
 
+    print(f"sending to FIXER...")
     return Command(
-        # Update the state with the FIXER's instructions
         update={
             "pylint_score": score,
             "style_issues": response.content,
             "messages": [HumanMessage(content=response.content)]
         },
-        # Control Flow: Go to the FIXER to apply changes
         goto="FIXER"
     )
