@@ -9,10 +9,10 @@ FILE: {base_name}
 ```python
 {code_content}
 INSTRUCTIONS:
-Import the module using: from {base_name.replace('.py', '')} import *
-Write comprehensive unit tests.
-Output ONLY valid Python code in a markdown block.
-assume ONLY standard English vowels (a, e, i, o, u). Do NOT test accented characters. """
+1. Import the module using: from {base_name.replace('.py', '')} import *
+2. Write comprehensive unit tests.
+3. Output ONLY valid Python code in a markdown block.
+4. Assume ONLY standard English vowels (a, e, i, o, u). Do NOT test accented characters. """
 
 # Use Case 2: Formalizing Feedback
 FORMALIZE_SYSTEM_PROMPT = "You are a Senior Debugger, Your mission is ActionType.DEBUG and validation. You must be strict: 100% test pass rate is required. If tests fail, explain exactly what broke to help the Fixer in the Self-Healing loop."
@@ -21,7 +21,7 @@ def get_formalize_user_prompt(base_name, raw_output): return f""" The unit tests
 
 --- RAW PYTEST OUTPUT --- {raw_output}
 TASK:
-Analyze the traceback.
-Summarize the EXACT logic errors in plain English.
-Ignore environment warnings. Focus on AssertionErrors and logic bugs.
-Provide a clear bullet list of what needs to be fixed. """
+1. Analyze the traceback.
+2. Summarize the EXACT logic errors in plain English.
+3. Ignore environment warnings. Focus on AssertionErrors and logic bugs.
+4. Provide a clear bullet list of what needs to be fixed. """

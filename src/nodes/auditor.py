@@ -8,6 +8,11 @@ from src.utils.pylint_tool import run_pylint
 from src.prompts.auditor_prompts import AUDITOR_SYSTEM_PROMPT, get_auditor_user_prompt
 
 def auditor_node(state: AgentState) -> Command[Literal["FIXER", "JUDGE"]]:
+    """
+    1. Runs Pylint (Static).
+    2. Decides whether to invoke the LLM.
+    3. Routes to 'FIXER' (if dirty) or 'JUDGE' (if clean).
+    """
     filename = state["filename"]
     print(f"🔍 Auditor scanning {filename} with Pylint...")
 
@@ -16,19 +21,19 @@ def auditor_node(state: AgentState) -> Command[Literal["FIXER", "JUDGE"]]:
     raw_output = pylint_result["stdout"]
     
     THRESHOLD = 9.5
-
+    # --- SCENARIO A: CODE IS CLEAN ---
     if (score >= THRESHOLD and state["test_errors"] == ""):
-        print(f"✅ Code is clean (Score: {score}). Skipping FIXER -> JUDGE.")
+        print(f"✅ Code is clean (Score: {score}). Skipping FIXER.")
         return Command(
             update={
                 "pylint_score": score,
-                "pylint_msg": "Style is excellent.",
                 "messages": [HumanMessage(content=f"Auditor: Code is clean ({score}/10).")]
             },
             goto="JUDGE"
         )
-
-    print(f"⚠️ Score is {score}. Invoking LLM and sending to FIXER...")
+    
+# --- SCENARIO B: CODE IS DIRTY ---
+    print(f"⚠️ Score is {score}. Invoking LLM")
     llm = get_llm(model_type="flash")
     
     response = llm.invoke([
@@ -36,6 +41,7 @@ def auditor_node(state: AgentState) -> Command[Literal["FIXER", "JUDGE"]]:
         HumanMessage(content=get_auditor_user_prompt(Path(filename).name, score, raw_output))
     ])
 
+    print(f"sending to FIXER...")
     return Command(
         update={
             "pylint_score": score,

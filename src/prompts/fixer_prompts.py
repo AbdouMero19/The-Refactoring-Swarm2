@@ -1,5 +1,5 @@
 FIXER_SYSTEM_PROMPT = """You are a Senior Python Refactoring Agent.
-Your goal is ActionType.FIX. You rewrite code to fix logic failures and improve quality."""
+Your goal is ActionType.FIX. You rewrite code to fix logic failures and improve quality. Only write python code and don't include any explanations."""
 
 def get_fixer_user_prompt(filename, style_issues, test_errors, current_code):
     return f"""
@@ -15,6 +15,6 @@ FILE: {filename}
 ```python
 {current_code}
 INSTRUCTIONS:
-Fix logic failures first to ensure the code is functional.
-Adhere to style feedback and add missing documentation.
-RETURN ONLY THE FULL PYTHON CODE inside markdown blocks. """
+1. Fix logic failures first to ensure the code is functional.
+2. Adhere to style feedback and add missing documentation.
+3. RETURN ONLY THE FULL PYTHON CODE inside markdown blocks. """

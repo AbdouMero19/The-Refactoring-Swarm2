@@ -12,11 +12,9 @@ def fixer_node(state: AgentState) -> Command[Literal["JUDGE"]]:
     filename = state["filename"]
     current_code = state["code_content"]
     style_issues = state.get("style_issues", "No style issues reported.")
-    test_errors = state.get("test_errors", "")
+    test_errors = state.get("test_errors", "None. Focus on style.")
     
-    if not test_errors: 
-        test_errors = "None. Focus on style."
-
+    
     print(f"🛠️ Fixer working on {Path(filename).name}...")
     
     llm = get_llm(model_type="pro") 

@@ -14,9 +14,17 @@ from src.prompts.judge_prompts import (
 )
 
 def judge_node(state: AgentState) -> Command[Literal["AUDITOR", END]]:
+    """
+    1. GENERATE TESTS: Writes a specific test file for the code.
+    2. RUN TESTS: Executes pytest.
+    3. ANALYZE (If Fail): Uses LLM to summarize exactly what went wrong.
+    4. DECIDE: Pass -> End | Fail -> AUDITOR.
+    """
     filename = state["filename"]
     code_content = state["code_content"]
     iteration = state.get("iteration_count", 0)
+
+    # Setup paths
     base_name = os.path.basename(filename)
     dir_name = os.path.dirname(filename)
     test_filename = os.path.join(dir_name, f"test_{base_name}")
@@ -49,15 +57,20 @@ def judge_node(state: AgentState) -> Command[Literal["AUDITOR", END]]:
         raw_output = f"CRITICAL SYSTEM ERROR: {str(e)}"
 
     # --- PHASE 3: DECISION ---
+    
+    # A. SUCCESS CASE
     if passed:
         print("✅ Judge: Tests Passed.")
         pylint_res = run_pylint(filename)
         return Command(update={"pylint_score": pylint_res["score"], "test_errors": "Passed"}, goto=END)
 
-    if iteration >= 3:
+    if iteration >= 5:
         print("🛑 Judge: Max retries reached.")
         pylint_res = run_pylint(filename)
-        return Command(update={"pylint_score": pylint_res["score"]}, goto=END)
+        return Command(update={"pylint_score": pylint_res["score"],
+                               "messages": [HumanMessage(content="Judge: Giving up after 5 failures.")]
+                               },
+                       goto=END)
 
     # --- PHASE 4: FORMALIZE FEEDBACK ---
     print("❌ Judge: Tests Failed. Formalizing feedback...")
