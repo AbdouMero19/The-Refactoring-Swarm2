@@ -7,8 +7,11 @@ from langgraph.types import Command
 from langgraph.graph import END
 from src.state.AgentState import AgentState
 from src.models.gemini_models import get_llm
-from src.utils.file_tool import write_file
 from src.utils.pylint_tool import run_pylint
+from src.prompts.judge_prompts import (
+    GEN_TEST_SYSTEM_PROMPT, get_gen_test_user_prompt,
+    FORMALIZE_SYSTEM_PROMPT, get_formalize_user_prompt
+)
 
 def judge_node(state: AgentState) -> Command[Literal["AUDITOR", END]]:
     """
@@ -20,7 +23,7 @@ def judge_node(state: AgentState) -> Command[Literal["AUDITOR", END]]:
     filename = state["filename"]
     code_content = state["code_content"]
     iteration = state.get("iteration_count", 0)
-    
+
     # Setup paths
     base_name = os.path.basename(filename)
     dir_name = os.path.dirname(filename)
@@ -30,116 +33,57 @@ def judge_node(state: AgentState) -> Command[Literal["AUDITOR", END]]:
 
     # --- PHASE 1: GENERATE TESTS ---
     llm = get_llm(model_type="pro")
+    gen_response = llm.invoke([
+        SystemMessage(content=GEN_TEST_SYSTEM_PROMPT),
+        HumanMessage(content=get_gen_test_user_prompt(base_name, code_content))
+    ])
     
-    # We ask the LLM to write tests that are compatible with the file structure
-    gen_prompt = f"""
-    You are a QA Engineer. Write a Pytest test file for this code:
+    code_match = re.search(r"```python(.*?)```", gen_response.content, re.DOTALL)
+    test_code = code_match.group(1).strip() if code_match else gen_response.content
     
-    FILE: {base_name}
-    ```python
-    {code_content}
-    ```
-    
-    INSTRUCTIONS:
-    1. Import the module using: `from {base_name.replace('.py', '')} import *`
-    2. Write comprehensive unit tests.
-    3. Output ONLY valid Python code in a markdown block.
-    4. assume ONLY standard English vowels (a, e, i, o, u). Do NOT test accented characters.
-    """
-    
-    response = llm.invoke([HumanMessage(content=gen_prompt)])
-    
-    # Extract code
-    code_match = re.search(r"```python(.*?)```", response.content, re.DOTALL)
-    test_code = code_match.group(1).strip() if code_match else response.content
-    
-    # Save test file
     with open(test_filename, "w" , encoding="utf-8") as f:
         f.write(test_code)
 
     # --- PHASE 2: RUN TESTS ---
-    print(f"   -> Running generated tests...")
-
-    # 1. Prepare the Environment
-    # This is the magic trick. We add the sandbox root to Python's search path.
     env = os.environ.copy()
-    project_root = state["project_root"]
-    env["PYTHONPATH"] = f"{project_root}:{env.get('PYTHONPATH', '')}"
+    env["PYTHONPATH"] = f"{state['project_root']}:{env.get('PYTHONPATH', '')}"
 
     try:
-        # Run pytest and capture everything
-        result = subprocess.run(
-            ["pytest", test_filename],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            env=env
-        )
+        result = subprocess.run(["pytest", test_filename], capture_output=True, text=True, timeout=10, env=env)
         passed = (result.returncode == 0)
         raw_output = result.stdout + result.stderr
-        
     except Exception as e:
         passed = False
         raw_output = f"CRITICAL SYSTEM ERROR: {str(e)}"
 
-    # --- PHASE 3: DECISION & FORMALIZATION ---
+    # --- PHASE 3: DECISION ---
     
     # A. SUCCESS CASE
     if passed:
         print("✅ Judge: Tests Passed.")
-        # Optional: Clean up test file
-        # os.remove(test_filename)
-        result = run_pylint(state["filename"])  # Re-run pylint to update score after fixes
-        return Command(
-            update={
-                "pylint_score": result["score"],
-                "test_errors": "Passed",
-                "messages": [HumanMessage(content="Judge: Code verified successfully.")]
-            },
-            goto=END
-        )
+        pylint_res = run_pylint(filename)
+        return Command(update={"pylint_score": pylint_res["score"], "test_errors": "Passed"}, goto=END)
 
-    # B. MAX RETRIES CASE
-    if iteration >= 3:
+    if iteration >= 5:
         print("🛑 Judge: Max retries reached.")
-        result = run_pylint(state["filename"])  # Re-run pylint to update score after fixes
-        return Command(
-            update={
-                "pylint_score": result["score"],
-                "messages": [HumanMessage(content="Judge: Giving up after 3 failures.")]
-                },
-            goto=END
-        )
+        pylint_res = run_pylint(filename)
+        return Command(update={"pylint_score": pylint_res["score"],
+                               "messages": [HumanMessage(content="Judge: Giving up after 5 failures.")]
+                               },
+                       goto=END)
 
-    # C. FAILURE CASE -> FORMALIZE THE ERROR
+    # --- PHASE 4: FORMALIZE FEEDBACK ---
     print("❌ Judge: Tests Failed. Formalizing feedback...")
-    
-    # We use the LLM to translate "Computer Speak" (Traceback) to "Dev Speak" (Actionable Items)
-    analysis_prompt = f"""
-    You are a Senior Debugger.
-    
-    The unit tests failed for '{base_name}'.
-    
-    --- RAW PYTEST OUTPUT ---
-    {raw_output}
-    -------------------------
-    
-    TASK:
-    1. Analyze the traceback.
-    2. Summarize the EXACT logic errors in plain English.
-    3. Ignore environment warnings. Focus on AssertionErrors and logic bugs.
-    4. Provide a clear bullet list of what needs to be fixed.
-    """
-    
-    analysis = llm.invoke([HumanMessage(content=analysis_prompt)])
-    formalized_error = analysis.content
+    analysis = llm.invoke([
+        SystemMessage(content=FORMALIZE_SYSTEM_PROMPT),
+        HumanMessage(content=get_formalize_user_prompt(base_name, raw_output))
+    ])
     
     return Command(
         update={
-            # We overwrite the old errors with this new, clean analysis
-            "test_errors": formalized_error,
+            "test_errors": analysis.content,
             "iteration_count": iteration + 1,
-            "messages": [HumanMessage(content=f"Judge: Tests failed. Feedback: {formalized_error}")]
+            "messages": [HumanMessage(content=f"Judge: Tests failed. Feedback: {analysis.content}")]
         },
         goto="AUDITOR"
     )
