@@ -1,19 +1,22 @@
 #PS: take care of the file name, pytest_tool was not accepted as a file name since there is *test* in gitignore
 
+from datetime import time
 import subprocess
 import os
 import sys
 from typing import Dict
+from time import sleep
 
 
-def run_pytest(target_dir: str, project_root: str = None) -> Dict:
-    
+def run_pytest(file_list: list, project_root: str = None) -> Dict:
+    sleep(2)
     # 1. Vérification du chemin
-    if not os.path.exists(target_dir):
+    for file in file_list:
+      if not os.path.exists(file):
         return {
             "returncode": -1,
             "stdout": "",
-            "stderr": f"Erreur : le chemin '{target_dir}' n'existe pas.",
+            "stderr": f"Erreur : le chemin '{file}' n'existe pas.",
             "test_passed": False,
             "error_summary": "Chemin introuvable."
         }
@@ -21,7 +24,7 @@ def run_pytest(target_dir: str, project_root: str = None) -> Dict:
     # 2. Préparation de l'environnement
     env = os.environ.copy()
     if project_root is None:
-        project_root = os.path.dirname(os.path.abspath(target_dir))
+        project_root = os.path.dirname(os.path.abspath(file_list[0]))
     
     current_pythonpath = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = f"{project_root}{os.pathsep}{current_pythonpath}"
@@ -29,7 +32,7 @@ def run_pytest(target_dir: str, project_root: str = None) -> Dict:
     # 3. Exécution de pytest
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "pytest", target_dir, "-v"],
+            [sys.executable, "-m", "pytest", *file_list, "-v"],
             capture_output=True,
             text=True,
             timeout=30,

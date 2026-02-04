@@ -1,6 +1,7 @@
 from typing import TypedDict, Annotated, List, Union
 from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
+from typing import Dict
 
 class AgentState(TypedDict):
     """
@@ -25,3 +26,7 @@ class AgentState(TypedDict):
 
     # --- SAFETY ---
     iteration_count: int # Tracks how many times we've looped (to stop infinite loops)
+    
+    signatures_map: Dict[str, str]
+    
+    test_file: str  # e.g., "sandbox/test_bad_code.py" or None if not generated

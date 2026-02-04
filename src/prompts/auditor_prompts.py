@@ -5,7 +5,7 @@ that identifies style violations, lack of documentation, and potential bugs base
 
 def get_auditor_user_prompt(filename, score, raw_output):
     return f"""
-FILE TO ANALYZE: {filename}
+FILES TO ANALYZE (format : ./Path/FILE1 | ./Path/FILE2 | ...): {filename}
 CURRENT PYLINT SCORE: {score}/10
 
 RAW PYLINT OUTPUT:
@@ -16,4 +16,7 @@ TASK:
 2. Produce a concise, bulleted refactoring plan for the Fixer Agent.
 3. Explicitly list missing docstrings, naming convention violations, or complexity issues.
 4. Do not provide code, only the diagnostic plan.
+5. Ignore final newline issues and line length issues.
+6. Only focus on style and documentation; ignore runtime errors.
+7. in case of multiple files (circular dependencies), you must separate the issues by file name.
 """

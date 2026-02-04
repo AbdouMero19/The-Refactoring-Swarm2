@@ -4,42 +4,46 @@ import subprocess # pour executer des commandes externes (pylint)
 import re         # necessaire pour obtinir un score numérique exact 
 import os         # pour securiser path des fichiers
 from typing import Dict # le format de sortie
+from time import sleep
 
 # dict: contient le score, code retour, stdout, stderr, issues_count
-def run_pylint(file_path: str) -> Dict:
+def run_pylint(file_list: list) -> Dict:
     """
     Runs pylint on a single Python file and returns analysis results.
     
     Args:
-        file_path: Path to the Python file to analyze
+        file_list: Path to the Python file to analyze
         
     Returns:
         Dict with keys: score, returncode, stdout, stderr, issues_count
     """
+    sleep(2)
     # Verifie si le fichier existe
-    if not os.path.isfile(file_path):
+    for file in file_list:
+      if not os.path.isfile(file):
         return {
             "score": 0.0,
             "returncode": -1,
             "stdout": "",
-            "stderr": f"Erreur : le fichier '{file_path}' n'existe pas !",
+            "stderr": f"Erreur : le fichier '{file}' n'existe pas !",
             "issues_count": 0
         }
 
     # Verifie que c'est bien un fichier Python
-    if not file_path.endswith('.py'):
+    for file in file_list:
+      if not file.endswith('.py'):
         return {
             "score": 0.0,
             "returncode": -1,
             "stdout": "",
-            "stderr": f"Erreur : '{file_path}' n'est pas un fichier Python !",
+            "stderr": f"Erreur : '{file}' n'est pas un fichier Python !",
             "issues_count": 0
         }
     
     try:
         # Execute pylint sur le fichier specifique
         result = subprocess.run(
-            [sys.executable, "-m", "pylint", file_path],
+            [sys.executable, "-m", "pylint", *file_list],
             capture_output=True,
             text=True,
             timeout=30  # eviter les boucles infinies

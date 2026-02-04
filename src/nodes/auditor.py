@@ -3,9 +3,10 @@ from typing import Literal
 from langchain_core.messages import HumanMessage, SystemMessage 
 from langgraph.types import Command 
 from src.state.AgentState import AgentState
-from src.models.gemini_models import get_llm
+from src.models.AI_models import get_llm
 from src.utils.pylint_tool import run_pylint 
 from src.prompts.auditor_prompts import AUDITOR_SYSTEM_PROMPT, get_auditor_user_prompt
+from src.utils.logger import log_experiment, ActionType
 
 def auditor_node(state: AgentState) -> Command[Literal["FIXER", "JUDGE"]]:
     """
@@ -14,13 +15,15 @@ def auditor_node(state: AgentState) -> Command[Literal["FIXER", "JUDGE"]]:
     3. Routes to 'FIXER' (if dirty) or 'JUDGE' (if clean).
     """
     filename = state["filename"]
+    target_dir = state["project_root"]
     print(f"🔍 Auditor scanning {filename} with Pylint...")
 
-    pylint_result = run_pylint(filename)
+    file_list = [f"{target_dir}/{f.strip()}" for f in filename.split("|")]
+    pylint_result = run_pylint(file_list)
     score = pylint_result["score"]
     raw_output = pylint_result["stdout"]
     
-    THRESHOLD = 9.5
+    THRESHOLD = 9.25
     # --- SCENARIO A: CODE IS CLEAN ---
     if (score >= THRESHOLD and state["test_errors"] == ""):
         print(f"✅ Code is clean (Score: {score}). Skipping FIXER.")
@@ -31,15 +34,43 @@ def auditor_node(state: AgentState) -> Command[Literal["FIXER", "JUDGE"]]:
             },
             goto="JUDGE"
         )
-    
+    if (score >= THRESHOLD):
+        print(f"⚠️ Score is {score}.")
+        return Command(
+            update={
+                "pylint_score": score,
+                "messages": [HumanMessage(content=f"Auditor: Code is clean ({score}/10).")]
+            },
+            goto="FIXER"
+        )    
 # --- SCENARIO B: CODE IS DIRTY ---
     print(f"⚠️ Score is {score}. Invoking LLM")
-    llm = get_llm(model_type="flash")
+    llm = get_llm(model_type="small")
+    
+    system_msg = AUDITOR_SYSTEM_PROMPT
+    user_msg = get_auditor_user_prompt(Path(filename).name, score, raw_output)
     
     response = llm.invoke([
-        SystemMessage(content=AUDITOR_SYSTEM_PROMPT),
-        HumanMessage(content=get_auditor_user_prompt(Path(filename).name, score, raw_output))
+        SystemMessage(content=system_msg),
+        HumanMessage(content=user_msg)
     ])
+    
+    # Log the LLM call
+    try:
+        log_experiment(
+            agent_name="Auditor",
+            model_used=llm.model_name if hasattr(llm, 'model_name') else "unknown",
+            action=ActionType.ANALYSIS,
+            details={
+                "input_prompt": f"SYSTEM:\n{system_msg}\n\nUSER:\n{user_msg}",
+                "output_response": response.content,
+                "pylint_score": score,
+                "filename": filename
+            },
+            status="SUCCESS"
+        )
+    except Exception as e:
+        print(f"⚠️ Logging failed in Auditor: {e}")
 
     print(f"sending to FIXER...")
     return Command(

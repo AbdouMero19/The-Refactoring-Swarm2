@@ -1,9 +1,18 @@
 #ce fichier doit permettre aux agents de : lire des fichiers, ecrire des fichiers sans sortir de sandbox/ ou target_dir
 import os #indispensable pour sandbox
+from time import sleep
+from langchain_core.tools import tool
 
 def is_path_allowed(file_path: str, target_dir: str) -> bool:
     """
-    Vérifie que file_path est bien à l'interieur de target_dir (sandbox)
+    Verifies that file_path is strictly inside target_dir (sandbox).
+    
+    Args:
+        file_path: The file path to verify.
+        target_dir: The target directory (sandbox) reference.
+    
+    Returns:
+        bool: True if the file is strictly inside target_dir, False otherwise.
     """
 
     #chemains 
@@ -15,11 +24,22 @@ def is_path_allowed(file_path: str, target_dir: str) -> bool:
 
 
 
-# fonction pour lire un fichier en sécurité 
 def read_file(filename: str, target_dir: str) -> str:
     """
-    Lit le contenu d'un fichier de maniere securisée
+    Reads the content of a file in a secure manner.
+    
+    Args:
+        filename: The filename to read (relative path to target_dir).
+        target_dir: The target directory (sandbox) to restrict file access.
+    
+    Returns:
+        str: The complete content of the file.
+    
+    Raises:
+        PermissionError: If the file is not inside target_dir.
+        FileNotFoundError: If the file does not exist.
     """
+    sleep(2)
     full_path = os.path.join(target_dir, filename)
 
     if not is_path_allowed(full_path, target_dir):
@@ -33,8 +53,23 @@ def read_file(filename: str, target_dir: str) -> str:
         return f.read() #lire et renvoi tout le contenu du fichier 
     
 
-#fonction pour ecrire dans un fichier en securité
+@tool
 def write_file(filename: str, target_dir: str, content: str) -> int:
+    """
+    Writes content to a file in a secure manner.
+    
+    Args:
+        filename: The filename to write (relative path to target_dir).
+        target_dir: The target directory (sandbox) to restrict file access.
+        content: The content to write to the file.
+    
+    Returns:
+        int: The number of characters written to the file.
+    
+    Raises:
+        PermissionError: If the file is not inside target_dir.
+    """
+    sleep(2)  
     full_path = os.path.join(target_dir, filename)
 
     if not is_path_allowed(full_path, target_dir):

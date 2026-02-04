@@ -29,18 +29,21 @@ load_dotenv(find_dotenv())
 #     )
 
 
-def get_llm(model_type="flash"):
+def get_llm(model_type="medium"):
     """
     Returns the Mistral LLM instance.
     """
     
     # Map your "flash" or "pro" keywords to specific Mistral models
-    if model_type == "flash":
-        # Fast model for quick tasks (e.g., Mistral Small or Nemo)
-        model_name = "mistral-medium-latest" 
-    else:
+    if model_type == "small":
+        # Fast model for quick tasks 
+        model_name = "mistral-small-latest" 
+    elif model_type == "medium":
         # Powerful model for coding (Fixer/Judge)
-        model_name = "mistral-large-latest"
+        model_name = "mistral-medium-latest"
+    elif model_type == "large":
+        # Most powerful model for complex reasoning
+        model_name = "mistral-large-latest"    
 
     print(f"🔌 Loading LLM: {model_name}")
 
@@ -48,7 +51,8 @@ def get_llm(model_type="flash"):
         model=model_name,
         temperature=0,
         mistral_api_key=os.getenv("MISTRAL_API_KEY"),
-        max_retries=2
+        max_retries=5,
+        timeout=60
         # Mistral handles context windows automatically, usually 32k or 128k
     )
 

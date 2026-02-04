@@ -18,4 +18,5 @@ logs/*
 
 .langgraph_api
 
-*test*
+real_test*
+circular_test*

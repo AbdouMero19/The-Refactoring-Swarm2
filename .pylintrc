@@ -1,0 +1,20 @@
+[MASTER]
+# A comma-separated list of package or module names from where C extensions may
+# be loaded. Extensions are loading into the active Python interpreter and may
+# run arbitrary code.
+extension-pkg-whitelist=
+
+[MESSAGES CONTROL]
+# Disable the message, report, category or checker with the given id(s).
+# C0114: Missing module docstring (We don't care about top-level docs for small scripts)
+# C0115: Missing class docstring (Let the LLM decide if it's complex enough)
+# C0116: Missing function docstring (Same)
+# C0301: Line too long (Modern screens are wide, 125 chars is fine)
+# C0303: Trailing whitespace (Black fixes this automatically!)
+# C0304: Final newline missing (Black fixes this automatically!)
+# W0611: Unused import (KEEP THIS ON - The Fixer should remove these!)
+disable=C0301,C0303,C0304
+
+[FORMAT]
+# Maximum number of characters on a single line.
+max-line-length=125
