@@ -5,12 +5,17 @@ import shutil
 import glob
 import uuid
 from dotenv import load_dotenv
+from importlib_metadata import files
 from langchain_core.messages import HumanMessage
 
 # Import your custom modules
 from src.utils.logger import log_experiment
 from src.state.AgentState import AgentState
 from src.graph.graph import build_agent_graph
+from time import sleep
+from src.utils.black import run_black
+from src.utils.context import build_project_context
+from src.utils.batching import build_sequential_batches
 
 load_dotenv()
 
@@ -56,12 +61,7 @@ def main():
     print(f"🚀 DEMARRAGE SUR : {args.target_dir}")
     # log_experiment("System", "STARTUP", f"Target: {args.target_dir}", "INFO")
 
-    # 3. Build & Compile Graph
-    # We build the graph once and reuse it for all files
-    builder = build_agent_graph()
-    graph = builder.compile()
-
-    # 4. Setup Sandbox (Critical Safety Step)
+    # 3. Setup Sandbox (Critical Safety Step)
     try:
         sandboxed_dir = setup_project_sandbox(args.target_dir)
         print(f"📦 Sandbox créé: {sandboxed_dir}")
@@ -69,8 +69,10 @@ def main():
         print(f"❌ Erreur création sandbox: {e}")
         # log_experiment("System", "CRITICAL", f"Sandbox creation failed: {e}", "ERROR")
         sys.exit(1)
+        
+       
 
-    # 5. Find Files
+    # 4. Find Files
     # We scan the SANDBOX, not the original directory
     # recursive=True ensures we find files in subfolders
     files = glob.glob(os.path.join(sandboxed_dir, "**", "*.py"), recursive=True)
@@ -79,46 +81,77 @@ def main():
     # files = [f for f in files if "test_" not in f and "setup.py" not in f and "__init__.py" not in f]
 
     print(f"📂 Found {len(files)} python files to process.")
-
+    
+    
+    # 5. Build & Compile Graph
+    # We build the graph once and reuse it for all files
+    builder = build_agent_graph()
+    graph = builder.compile()
+    
+      
     # 6. Execution Loop
-    for file_path in files:
-        relative_name = os.path.relpath(file_path, sandboxed_dir)
+    for batch in build_sequential_batches(files):
+        # 1. Prepare Batch Metadata
+        # Convert absolute paths (sandbox) to relative paths for display/agent
+        # e.g. ["/abs/sandbox/inventory.py", "/abs/sandbox/order.py"]
+        
+        batch_relative_paths = [os.path.relpath(f, sandboxed_dir) for f in batch]
+        
+        # Create the string signature: "inventory.py | order.py"
+        files_paths_str = " | ".join(batch_relative_paths)
+        
         print(f"\n{'='*60}")
-        print(f"👉 Processing: {relative_name}")
+        print(f"👉 Processing Batch: {files_paths_str}")
         print(f"{'='*60}")
 
-        try:
-            # Read content from the sandboxed file
-            with open(file_path, "r", encoding="utf-8") as f:
-                code_content = f.read()
+        # 2. Prepare Code Content (Concatenate all files in batch)
+        full_code_content = ""
+        valid_batch = True
+        
+        for file_path, relative_name in zip(batch, batch_relative_paths):
+            print(f"   🔍 Formatting {relative_name}...")
+            run_black(file_path)
+            
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    full_code_content += f"FILE: {relative_name}\n"
+                    full_code_content += f.read() + "\n\n"
+            except Exception as e:
+                print(f"❌ Failed to read {relative_name}: {e}")
+                valid_batch = False
+                break
+        
+        if not valid_batch: continue
 
-            # Initialize Agent State
-            # We must pass 'project_root' so the Judge handles imports correctly
+        try:
+            # 3. Initialize Agent State
             initial_state = {
-                "messages": [HumanMessage(content=f"Starting analysis on {relative_name}")],
-                "filename": file_path,          # Absolute path in sandbox
-                "project_root": sandboxed_dir,  # Root for PYTHONPATH imports
-                "code_content": code_content,
+                "messages": [HumanMessage(content=f"Starting analysis on {files_paths_str}")],
+                "filename": files_paths_str,      # Clean string "a.py | b.py"
+                "project_root": sandboxed_dir,    # Critical for imports
+                "code_content": full_code_content,
                 "pylint_score": 0.0,
                 "pylint_msg": "",
                 "test_errors": "",
-                "iteration_count": 0
+                "iteration_count": 0,
+                # Pass ALL files in sandbox to context, so the agent knows about files outside the current batch
+                "signatures_map": build_project_context(files), 
+                "test_file": ""
             }
 
-            # RUN THE AGENT
-            # .invoke() blocks until the graph hits END
+            # 4. RUN THE AGENT
             final_state = graph.invoke(initial_state)
 
-            # Reporting
+            # 5. Reporting
             final_score = final_state.get("pylint_score", 0)
-            print(f"✅ Finished {relative_name}")
-            print(f"   - Final Pylint Score: {final_score}/10")
-            
-            # log_experiment("System", "SUCCESS", f"Refactored {relative_name} (Score: {final_score})", "INFO")
+            print(f"✅ Finished Batch {files_paths_str}")
+            print(f"   - Final Score: {final_score}/10")
 
         except Exception as e:
-            print(f"❌ Failed on {relative_name}: {e}")
-            # log_experiment("System", "ERROR", f"Failed on {relative_name}: {str(e)}", "ERROR")
+            print(f"❌ Failed on batch {files_paths_str}: {e}")
+        
+        print('sleeping for 4 seconds...')
+        sleep(4)    
 
     print("\n✅ MISSION_COMPLETE")
     print(f"Output available in: {sandboxed_dir}")
