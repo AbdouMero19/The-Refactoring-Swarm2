@@ -17,7 +17,10 @@ INSTRUCTIONS:
 5. only write logical tests that can run in isolation.
 6. in case of multiple files (circular dependencies), you must generate a separate test file for each with names test_FILE1.py ... keeping the same folder as the original files ( no folder creation allowed) .
 7. use the write_file function to write each test file separately.
-8. Use the following map to verify methods and attributes in other files:
+8. don't be strict on floating point errors (use approx where necessary).
+9.When patching classes in tests, always patch the location where the class is imported, not where it is defined.
+10.When mocking a class that gets instantiated (e.g., db = Database()), ensure the test verifies the call to the mock class itself, or properly tracks the .return_value which represents the instance.
+11.only Use the following methods and attributes that exist in the provided code. Do not invent new methods or attributes.:
 {"".join(signatures_map) if signatures_map else ""}
 """
 # Use Case 2: Formalizing Feedback

@@ -8,6 +8,7 @@ from src.models.AI_models import get_llm
 from src.utils.file_tool import write_file
 from src.prompts.fixer_prompts import FIXER_SYSTEM_PROMPT, get_fixer_user_prompt
 from src.utils.context import get_single_file_signature
+from src.utils.logger import log_experiment, ActionType
 import os
 from time import sleep
 
@@ -22,29 +23,49 @@ def fixer_node(state: AgentState) -> Command[Literal["JUDGE"]]:
     
     llm_no_tools = get_llm(model_type="large") 
     llm = llm_no_tools.bind_tools([write_file])
-    response = llm.invoke([
-        SystemMessage(content=FIXER_SYSTEM_PROMPT),
-        HumanMessage(content=get_fixer_user_prompt(
-            filename,
-            style_issues,
-            test_errors,
-            current_code,
-            context=state["signatures_map"].values(),
-            test_file=state["test_file"] if "test_file" in state else None)
-                     )
-        ])
     
-    # content = response.content
-    # code_match = re.search(r"```python(.*?)```", content, re.DOTALL)
-    # new_code = code_match.group(1).strip() if code_match else content
-
-    # write_file(Path(filename).name, Path(filename).parent, new_code)
+    system_msg = FIXER_SYSTEM_PROMPT
+    user_msg = get_fixer_user_prompt(
+        filename,
+        style_issues,
+        test_errors,
+        current_code,
+        context=state["signatures_map"].values(),
+        test_file=state["test_file"] if "test_file" in state else None)
+    
+    response = llm.invoke([
+        SystemMessage(content=system_msg),
+        HumanMessage(content=user_msg)
+    ])
+    
+    # Log the LLM call
+    tool_calls_info = []
+    try:
+        if hasattr(response, 'tool_calls') and response.tool_calls:
+            tool_calls_info = [{"id": tc.get('id'), "name": tc.get('name')} for tc in response.tool_calls]
+        
+        log_experiment(
+            agent_name="Fixer",
+            model_used=llm_no_tools.model_name if hasattr(llm_no_tools, 'model_name') else "unknown",
+            action=ActionType.FIX,
+            details={
+                "input_prompt": f"SYSTEM:\n{system_msg}\n\nUSER:\n{user_msg}",
+                "output_response": response.content if hasattr(response, 'content') else str(response),
+                "tool_calls": tool_calls_info,
+                "filename": filename,
+                "style_issues": style_issues[:200] if style_issues else "None"
+            },
+            status="SUCCESS"
+        )
+    except Exception as e:
+        print(f"⚠️ Logging failed in Fixer: {e}")
+    
+    
     new_code = ""
     current_map = state["signatures_map"].copy() 
     for tool_call in response.tool_calls:
             args = tool_call['args']
             file_name = args.get("filename")
-            target_dir = args.get("target_dir")
             content = args.get("content")
             if file_name and content:
                write_file.invoke({
