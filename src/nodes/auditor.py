@@ -59,7 +59,7 @@ def auditor_node(state: AgentState) -> Command[Literal["FIXER", "JUDGE"]]:
     try:
         log_experiment(
             agent_name="Auditor",
-            model_used=llm.model_name if hasattr(llm, 'model_name') else "unknown",
+            model_used="mistral-small-latest",
             action=ActionType.ANALYSIS,
             details={
                 "input_prompt": f"SYSTEM:\n{system_msg}\n\nUSER:\n{user_msg}",
