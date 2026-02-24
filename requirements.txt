@@ -4,3 +4,4 @@ langchain_mistralai==1.1.1
 langgraph==1.0.8
 pytest==9.0.2
 python-dotenv==1.2.1
+pylint==3.0.1

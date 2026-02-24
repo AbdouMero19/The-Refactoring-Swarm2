@@ -61,7 +61,7 @@ def judge_node(state: AgentState) -> Command[Literal["AUDITOR", END]]:
             
             log_experiment(
                 agent_name="Judge",
-                model_used=llm_no_tools.model_name if hasattr(llm_no_tools, 'model_name') else "unknown",
+                model_used="mistral-large-latest",
                 action=ActionType.GENERATION,
                 details={
                     "input_prompt": f"SYSTEM:\n{gen_system_msg}\n\nUSER:\n{gen_user_msg}",
@@ -145,7 +145,7 @@ def judge_node(state: AgentState) -> Command[Literal["AUDITOR", END]]:
     try:
         log_experiment(
             agent_name="Judge",
-            model_used=llm.model_name if hasattr(llm, 'model_name') else "unknown",
+            model_used="mistral-small-latest",
             action=ActionType.DEBUG,
             details={
                 "input_prompt": f"SYSTEM:\n{formalize_system_msg}\n\nUSER:\n{formalize_user_msg}",

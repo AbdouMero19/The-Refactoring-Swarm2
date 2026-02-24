@@ -46,7 +46,7 @@ def fixer_node(state: AgentState) -> Command[Literal["JUDGE"]]:
         
         log_experiment(
             agent_name="Fixer",
-            model_used=llm_no_tools.model_name if hasattr(llm_no_tools, 'model_name') else "unknown",
+            model_used="mistral-large-latest",
             action=ActionType.FIX,
             details={
                 "input_prompt": f"SYSTEM:\n{system_msg}\n\nUSER:\n{user_msg}",
